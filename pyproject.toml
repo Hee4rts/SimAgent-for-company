@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "simagent"
+version = "0.1.0"
+description = "基于 Pydantic AI slim 的规划、模型工具与仿真执行框架"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.12,<3",
+  "pydantic-ai-slim==2.66.0",
+  "httpx>=0.28,<1",
+  "filelock>=3.16,<5",
+]
+
+[project.optional-dependencies]
+openai = ["pydantic-ai-slim[openai]==2.66.0"]
+anthropic = ["pydantic-ai-slim[anthropic]==2.66.0"]
+mcp = ["pydantic-ai-slim[mcp]==2.66.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/simagent"]
+
