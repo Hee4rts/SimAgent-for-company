@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const form = $("chat-form");
+const form = $("task-form");
 const input = $("question");
 const messages = $("messages");
 const scrollArea = $("scroll-area");
@@ -22,7 +22,7 @@ function controls(value) {
   $("send").disabled = !configured || !input.value.trim();
   $("stop").hidden = !busy;
   $("stop").disabled = !controller;
-  $("new-chat").disabled = busy;
+  $("new-task").disabled = busy;
 }
 
 function scrollDown() {
@@ -130,9 +130,6 @@ async function requestJSON(url, options = {}) {
 
 function showSession(data) {
   configured = data.configured;
-  $("model-name").textContent = data.model;
-  $("connection-label").textContent = configured ? "已配置 · 本地会话" : "等待配置 API Key";
-  $("connection-dot").className = `connection-dot ${configured ? "ready" : "warning"}`;
   notice(configured ? "" : "请在项目根目录的 .env 中填写 DEEPSEEK_API_KEY，并重启服务后刷新此页。");
   messages.replaceChildren();
   $("welcome").hidden = data.messages.length > 0;
@@ -141,7 +138,7 @@ function showSession(data) {
     if (item.role === "assistant") addCopy(message, item.content);
   }
   controls(data.busy);
-  if (data.busy) notice("当前会话正在其他页面生成回答，完成后会自动更新。");
+  if (data.busy) notice("当前任务正在其他页面生成回答，完成后会自动更新。");
   else if (configured) input.focus();
   scrollDown();
 }
@@ -153,11 +150,10 @@ async function loadSession() {
     if (data.busy) setTimeout(loadSession, 1500);
   } catch {
     notice("无法连接服务，请确认启动命令仍在运行，然后刷新页面。");
-    $("connection-label").textContent = "连接失败";
   }
 }
 
-$("new-chat").addEventListener("click", async () => {
+$("new-task").addEventListener("click", async () => {
   if (busy) return;
   try {
     const data = await requestJSON("/api/session/reset", { method: "POST" });
@@ -204,12 +200,18 @@ form.addEventListener("submit", async (event) => {
   let stopped = false;
 
   function onEvent(item) {
-    if (item.type === "delta") {
-      text += item.text;
+    if (item.type === "delta" || item.type === "replace") {
+      text = item.type === "replace" ? item.text : text + item.text;
       answer.body.classList.remove("thinking");
       renderText(answer.body, text);
       scrollDown();
-    } else if (item.type === "done") finished = true;
+    } else if (item.type === "done") {
+      if (typeof item.text === "string") {
+        text = item.text;
+        renderText(answer.body, text);
+      }
+      finished = true;
+    }
     else if (item.type === "stopped") stopped = true;
     else if (item.type === "error") throw new Error(item.message);
   }

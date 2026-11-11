@@ -1,4 +1,4 @@
-"""Dependency scheduling and durable job control; no simulation clock lives here."""
+"""Dependency scheduling and persisted task records for native function tools."""
 
 from __future__ import annotations
 
@@ -8,8 +8,11 @@ import logging
 from datetime import timedelta
 
 from pydantic import JsonValue
+from pydantic_ai import FunctionToolset
+from pydantic_ai.models import Model
 
-from .contracts import (
+from .tool_runtime import _FunctionJob
+from ..schemas import (
     BusinessInput,
     JobState,
     RunEvent,
@@ -23,11 +26,10 @@ from .contracts import (
     ToolResult,
     now,
 )
-from .errors import PlanValidationError, RecoveryRequiredError, RunBusyError, ToolExecutionError
+from ..errors import PlanValidationError, RecoveryRequiredError, RunBusyError, ToolExecutionError
+from ..infrastructure.dependencies import Services
 from .references import resolve
-from .storage import RunStore
-from .tools.base import ModelTool
-from .tools.registry import ToolRegistry
+from ..infrastructure.storage import RunStore
 from .validation import PlanValidator
 
 logger = logging.getLogger(__name__)
@@ -38,19 +40,37 @@ TERMINAL_RUNS = {RunState.SUCCEEDED, RunState.FAILED, RunState.CANCELLED}
 class SimulationExecutor:
     def __init__(
         self,
-        registry: ToolRegistry,
+        toolset: FunctionToolset[Services],
         store: RunStore,
         *,
         validator: PlanValidator | None = None,
+        services: Services | None = None,
+        execution_model: Model | None = None,
         cancellation_timeout_seconds: float = 10,
     ) -> None:
         if cancellation_timeout_seconds <= 0:
             raise ValueError("Cancellation timeout must be positive")
-        self.registry = registry
+        self.toolset = toolset
         self.store = store
-        self.validator = validator or PlanValidator(registry)
+        self.validator = validator or PlanValidator(toolset)
+        if self.validator.toolset is not toolset:
+            raise ValueError("Executor and validator must share the same FunctionToolset")
+        self.services = services if services is not None else Services()
+        self.execution_model = execution_model
         self.cancellation_timeout_seconds = cancellation_timeout_seconds
         self._active: dict[str, tuple[asyncio.Event, asyncio.Event]] = {}
+        self._function_jobs: dict[str, _FunctionJob] = {}
+
+    def _job_tool(self, name: str) -> _FunctionJob:
+        native = self.toolset.tools[name]
+        if name not in self._function_jobs:
+            self._function_jobs[name] = _FunctionJob(
+                self.toolset, native, self.services, self.execution_model,
+            )
+        job = self._function_jobs[name]
+        if job.tool is not native:
+            raise ValueError("Do not replace tool definitions while an executor owns jobs")
+        return job
 
     def create_run(
         self,
@@ -209,6 +229,10 @@ class SimulationExecutor:
                         continue
                     if len(active) >= run.plan.config.max_concurrency:
                         break
+                    if any(self.toolset.tools[t.tool].sequential for t in active.values()):
+                        break
+                    if active and self.toolset.tools[task.tool].sequential:
+                        continue
                     if any(
                         used.get(name, 0) + amount > run.request.resource_limits[name]
                         for name, amount in task.resources.items()
@@ -287,7 +311,7 @@ class SimulationExecutor:
         results: dict[str, ToolResult],
     ) -> None:
         record = run.tasks[task.id]
-        tool = self.registry.get(task.tool)
+        tool = self._job_tool(task.tool)
         try:
             value = self._input(run, task, results)
         except (ValueError, KeyError, IndexError, PlanValidationError) as error:
@@ -315,26 +339,10 @@ class SimulationExecutor:
                         idempotency_key=record.idempotency_key,
                         input=value.model_dump(mode="json"),
                     )
-                elif not record.job_id and not (
-                    tool.descriptor.idempotent and tool.descriptor.resumable
-                ):
-                    raise RecoveryRequiredError(
-                        "Uncertain submissions require a durable tool with idempotent submission"
-                    )
                 elif not record.job_id:
-                    # Reattach using the persisted key even if the original deadline expired.
-                    # A durable backend must retain the key for the entire recovery window.
-                    if record.idempotency_key is None:
-                        raise RecoveryRequiredError("Saved submission key is missing")
-                    async with asyncio.timeout(self.cancellation_timeout_seconds):
-                        record.job_id = await tool.submit(
-                            value,
-                            idempotency_key=record.idempotency_key,
-                        )
-                    if not record.job_id:
-                        raise RecoveryRequiredError("Tool returned an empty job ID")
-                    record.state = TaskState.RUNNING
-                    self._save(run, "task.reattached", task.id, job_id=record.job_id)
+                    raise RecoveryRequiredError(
+                        "The previous function submission is uncertain; automatic replay is disabled"
+                    )
                 try:
                     if record.deadline_at is None or record.idempotency_key is None:
                         raise RecoveryRequiredError(
@@ -380,7 +388,7 @@ class SimulationExecutor:
                 except TimeoutError:
                     if not record.job_id or not await self._stop(tool, record.job_id):
                         raise RecoveryRequiredError(
-                            "Task timed out; remote completion/cancellation is unknown"
+                            "Task timed out; function completion/cancellation is unknown"
                         ) from None
                     async with asyncio.timeout(self.cancellation_timeout_seconds):
                         stopped = await tool.status(record.job_id)
@@ -437,7 +445,7 @@ class SimulationExecutor:
             self._save(run, "task.interrupted", task.id, error=record.error)
 
     @classmethod
-    async def _poll(cls, tool: ModelTool, job_id: str, interval: float) -> ToolResult:
+    async def _poll(cls, tool: _FunctionJob, job_id: str, interval: float) -> ToolResult:
         previous: JobState | None = None
         while True:
             update = await tool.status(job_id)
@@ -457,13 +465,13 @@ class SimulationExecutor:
             await asyncio.sleep(interval)
 
     @staticmethod
-    async def _fetch_result(tool: ModelTool, job_id: str) -> ToolResult:
+    async def _fetch_result(tool: _FunctionJob, job_id: str) -> ToolResult:
         try:
-            return tool.validate_result(await tool.result(job_id))
+            return await tool.result(job_id)
         except ValueError as error:
             raise ToolExecutionError(f"Invalid tool result: {error}") from error
 
-    async def _stop(self, tool: ModelTool, job_id: str) -> bool:
+    async def _stop(self, tool: _FunctionJob, job_id: str) -> bool:
         try:
             async with asyncio.timeout(self.cancellation_timeout_seconds):
                 return await tool.cancel(job_id)
@@ -477,7 +485,7 @@ class SimulationExecutor:
                 continue
             stopped = record.state == TaskState.PENDING
             if record.job_id:
-                stopped = await self._stop(self.registry.get(task.tool), record.job_id)
+                stopped = await self._stop(self._job_tool(task.tool), record.job_id)
             if stopped:
                 record.state, record.finished_at = TaskState.CANCELLED, now()
                 record.error = "Cancellation requested"

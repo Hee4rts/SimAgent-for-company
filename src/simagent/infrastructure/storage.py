@@ -11,8 +11,8 @@ from typing import Protocol
 
 from filelock import FileLock, Timeout
 
-from .contracts import RunEvent, RunRecord, ToolResult, new_id, now
-from .errors import RunBusyError
+from ..schemas import RunEvent, RunRecord, ToolResult, new_id, now
+from ..errors import RunBusyError
 
 
 class RunStore(Protocol):

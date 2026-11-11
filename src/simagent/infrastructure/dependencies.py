@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from pydantic import JsonValue
 
-from .contracts import DataReference
+from ..schemas import DataReference, ToolInput
 
 
 class DataProvider(Protocol):
@@ -20,6 +20,14 @@ class KnowledgeProvider(Protocol):
 
 @dataclass(frozen=True)
 class Services:
+    """Application dependencies for native RunContext[Services] tools.
+
+    The executor supplies input/idempotency_key on a per-call copy. Agent calls
+    normally use only data, knowledge and clients; clients are application-owned.
+    """
+
     data: DataProvider | None = None
     knowledge: KnowledgeProvider | None = None
     clients: dict[str, Any] = field(default_factory=dict)
+    input: ToolInput | None = None
+    idempotency_key: str | None = None

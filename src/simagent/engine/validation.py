@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from graphlib import CycleError, TopologicalSorter
 
-from pydantic import TypeAdapter, ValidationError
+from pydantic_ai import FunctionToolset
 
-from .contracts import (
+from .tool_runtime import describe_tool, parameter_issues, validate_tool_input
+from ..schemas import (
     BusinessConstraint,
     BusinessInput,
     SimulationPlan,
@@ -16,17 +16,17 @@ from .contracts import (
     ToolInput,
     ValueReference,
 )
-from .errors import PlanValidationError
+from ..errors import PlanValidationError
+from ..infrastructure.dependencies import Services
 from .references import resolve
-from .tools.registry import ToolRegistry
 
 ConstraintCheck = Callable[[SimulationPlan, BusinessInput, BusinessConstraint], list[str]]
 InputCheck = Callable[[SimulationTask, ToolInput, BusinessInput], list[str]]
 
 
 class PlanValidator:
-    def __init__(self, registry: ToolRegistry) -> None:
-        self.registry = registry
+    def __init__(self, toolset: FunctionToolset[Services]) -> None:
+        self.toolset = toolset
         self._constraints: dict[str, ConstraintCheck] = {}
         self._input_checks: list[InputCheck] = []
 
@@ -45,8 +45,8 @@ class PlanValidator:
         value: ToolInput,
         request: BusinessInput,
     ) -> ToolInput:
-        tool = self.registry.get(task.tool)
-        validated = tool.validate_input(value)
+        tool = self.toolset.tools[task.tool]
+        validated = validate_tool_input(tool, value)
         issues = [
             issue for check in self._input_checks for issue in check(task, validated, request)
         ]
@@ -83,14 +83,17 @@ class PlanValidator:
                         prefix + f"resource {resource!r} has insufficient/unknown capacity"
                     )
             try:
-                tool = self.registry.get(task.tool)
-            except KeyError as error:
-                issues.append(prefix + str(error))
+                tool = self.toolset.tools[task.tool]
+            except KeyError:
+                issues.append(prefix + f"unknown tool {task.tool!r}")
                 continue
-            if task.tool_version != tool.descriptor.version:
-                issues.append(prefix + "tool version does not match registry")
-            if task.retry.max_attempts > 1 and not tool.descriptor.idempotent:
+            descriptor = describe_tool(tool)
+            if task.tool_version != descriptor.version:
+                issues.append(prefix + "tool version does not match tool metadata")
+            if task.retry.max_attempts > 1 and not descriptor.idempotent:
                 issues.append(prefix + "retries require an idempotent tool")
+            if tool.requires_approval:
+                issues.append(prefix + "approval tools require a native Agent approval flow")
             if set(task.parameters) & set(task.bindings):
                 issues.append(prefix + "parameters and bindings must have distinct names")
             parameters = dict(task.parameters)
@@ -113,31 +116,13 @@ class PlanValidator:
                 target_unit = task.parameter_units.get(name)
                 if target_unit != reference.unit:
                     issues.append(prefix + f"binding {name!r} must preserve its source unit")
-            for name, unit in tool.descriptor.parameter_units.items():
+            for name, unit in descriptor.parameter_units.items():
                 if task.parameter_units.get(name) != unit:
                     issues.append(prefix + f"parameter {name!r} requires unit {unit!r}")
-            fields = tool.parameter_model.model_fields
-            available = set(parameters) | unresolved
-            for name, field in fields.items():
-                if field.is_required() and name not in available:
-                    issues.append(prefix + f"missing parameter {name!r}")
-            if tool.parameter_model.model_config.get("extra") != "allow":
-                for name in available - fields.keys():
-                    issues.append(prefix + f"unknown parameter {name!r}")
-            try:
-                if not unresolved:
-                    tool.parameter_model.model_validate_json(
-                        json.dumps(parameters), strict=True, by_name=True
-                    )
-                else:
-                    for name, value in parameters.items():
-                        if name in fields:
-                            TypeAdapter(fields[name].rebuild_annotation()).validate_json(
-                                json.dumps(value),
-                                strict=True,
-                            )
-            except (ValueError, ValidationError) as error:
-                issues.append(prefix + f"invalid parameters: {error}")
+            issues.extend(
+                prefix + f"invalid parameters: {issue}"
+                for issue in parameter_issues(tool, parameters, unresolved)
+            )
 
         metrics = {metric.name: metric for metric in plan.metrics}
         if len(metrics) != len(plan.metrics):
@@ -182,7 +167,7 @@ class PlanValidator:
                 return [f"unknown result source {reference.task_id!r}"]
             task = tasks[reference.task_id]
             try:
-                descriptor = self.registry.get(task.tool).descriptor
+                descriptor = describe_tool(self.toolset.tools[task.tool])
             except KeyError:
                 return [f"unknown source tool {task.tool!r}"]
             actual_unit = descriptor.output_units.get(reference.pointer)

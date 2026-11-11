@@ -7,7 +7,7 @@ import operator
 import statistics
 from collections.abc import Mapping
 
-from .contracts import (
+from ..schemas import (
     AcceptanceResult,
     BusinessInput,
     Evaluation,

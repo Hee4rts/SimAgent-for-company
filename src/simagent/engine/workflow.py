@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from .agents import PlanSolveAgent, ResultInterpreter
-from .contracts import (
+from ..agents import PlanSolveAgent, ResultInterpreter
+from ..schemas import (
     BusinessInput,
     ExecutionFeedback,
     RunEvent,
@@ -29,8 +29,8 @@ class SimulationFramework:
     ) -> None:
         if not 0 <= max_revisions <= 10:
             raise ValueError("max_revisions must be between 0 and 10")
-        if planner.registry is not executor.registry or planner.validator is not executor.validator:
-            raise ValueError("Planner and executor must share the same registry and validator")
+        if planner.toolset is not executor.toolset or planner.validator is not executor.validator:
+            raise ValueError("Planner and executor must share the same FunctionToolset and validator")
         self.planner, self.executor, self.interpreter = planner, executor, interpreter
         self.evaluator = evaluator or MetricEvaluator()
         self.max_revisions = max_revisions

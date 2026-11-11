@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f6f7f4">
-  <title>simAgent · 对话</title>
+  <title>simAgent · 任务</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/chat.js" defer></script>
@@ -16,39 +16,31 @@
       <span>simAgent<span class="brand-dot">.</span></span>
     </a>
     <div class="workspace-label">你的思考空间</div>
-    <button id="new-chat" class="new-chat" disabled>
+    <button id="new-task" class="new-task" disabled>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      新建对话
+      新建任务
       <span class="key-hint">＋</span>
     </button>
     <div class="sidebar-section">工作空间</div>
     <div class="nav-current">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l-3 3V11.5A7.5 7.5 0 0 1 9.5 4h3a7.5 7.5 0 0 1 7.5 7.5Z"/></svg>
-      当前对话
+      当前任务
       <span class="nav-dot"></span>
-    </div>
-    <div class="sidebar-bottom">
-      <div class="model-card">
-        <div class="model-card-label">当前模型</div>
-        <div id="model-name" class="model-name">正在连接…</div>
-        <div class="connection"><span id="connection-dot" class="connection-dot"></span><span id="connection-label">加载配置</span></div>
-      </div>
-      <div class="sidebar-footnote">DeepSeek 驱动 <span>·</span> 通用问答</div>
     </div>
   </aside>
 
   <main class="main">
     <header class="topbar">
-      <div class="breadcrumb"><span>工作空间</span><span class="slash">/</span><strong>对话</strong></div>
-      <div class="mode-tag"><span></span>问答模式</div>
+      <div class="breadcrumb"><span>工作空间</span><span class="slash">/</span><strong>任务</strong></div>
+      <div class="mode-tag"><span></span>任务讨论</div>
     </header>
 
     <div id="notice" class="notice" role="status" hidden></div>
-    <section id="scroll-area" class="scroll-area" aria-label="对话内容">
+    <section id="scroll-area" class="scroll-area" aria-label="任务内容">
       <div id="welcome" class="welcome">
         <div class="welcome-mark"><img src="/static/favicon.svg" width="48" height="48" alt=""></div>
         <div class="eyebrow">让思考，向前一步</div>
-        <h1>今天，想聊些什么？</h1>
+        <h1>今天，想解决什么任务？</h1>
         <p>从一个问题开始，梳理思路、理解概念，<br>或一起探讨下一步的可能。</p>
         <div class="welcome-rule"></div>
         <div class="welcome-caption">你的问题，就是起点。</div>
@@ -57,18 +49,18 @@
     </section>
 
     <div class="composer-area">
-      <form id="chat-form" class="composer">
-        <label for="question" class="sr-only">输入问题</label>
-        <textarea id="question" placeholder="输入你的问题…" rows="2" maxlength="32000" disabled></textarea>
+      <form id="task-form" class="composer">
+        <label for="question" class="sr-only">输入任务</label>
+        <textarea id="question" placeholder="描述你的任务…" rows="2" maxlength="32000" disabled></textarea>
         <div class="composer-bottom">
           <span class="composer-hint">Enter 发送 <span>·</span> Shift + Enter 换行</span>
           <button id="stop" class="stop-button" type="button" hidden><span></span>停止生成</button>
-          <button id="send" class="send-button" type="submit" aria-label="发送问题" disabled>
+          <button id="send" class="send-button" type="submit" aria-label="发送任务内容" disabled>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 6-6 6 6M12 6v13"/></svg>
           </button>
         </div>
       </form>
-      <div class="footer-note">当前为模型问答，尚未启用运筹、机器学习与仿真工具。</div>
+      <div class="footer-note">simAgent</div>
     </div>
   </main>
 </body>

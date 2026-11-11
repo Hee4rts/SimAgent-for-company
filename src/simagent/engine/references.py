@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
 
-from .contracts import BusinessInput, ToolResult, ValueReference
+from ..schemas import BusinessInput, ToolResult, ValueReference
 
 
 def json_pointer(document: Any, pointer: str) -> Any:
