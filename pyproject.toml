@@ -16,9 +16,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+deepseek = ["pydantic-ai-slim[openai]==2.66.0"]
+web = [
+  "pydantic-ai-slim[openai]==2.66.0",
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "python-dotenv>=1,<2",
+]
 openai = ["pydantic-ai-slim[openai]==2.66.0"]
 anthropic = ["pydantic-ai-slim[anthropic]==2.66.0"]
 mcp = ["pydantic-ai-slim[mcp]==2.66.0"]
+
+[project.scripts]
+simagent = "simagent.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/simagent"]

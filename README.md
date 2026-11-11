@@ -10,6 +10,53 @@ Python 3.11+；使用 `uv sync` 安装核心依赖。模型供应商和 MCP 按�
 `uv sync --extra openai`、`uv sync --extra anthropic`、`uv sync --extra mcp`。
 核心安装不附带模型供应商 SDK；导入包不会读取密钥、调用模型或创建数据库。
 
+## 网页问答（DeepSeek）
+
+在项目根目录的 `.env` 中填写配置。首次克隆仓库时，可将 `.env.example` 复制为 `.env`；
+如果已经存在 `.env`，直接编辑，保留其中自己的配置。
+
+```dotenv
+DEEPSEEK_API_KEY=填入你的DeepSeek密钥
+DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+
+SIMAGENT_HOST=127.0.0.1
+SIMAGENT_PORT=8000
+SIMAGENT_TIMEOUT_SECONDS=180
+```
+
+在项目目录启动：
+
+```sh
+uv run --extra web simagent
+```
+
+浏览器打开 **http://127.0.0.1:8000**，即可连续问答。默认启动网页服务，原终端输入模式已替换。
+支持流式回答、复制回答、停止生成和新建对话。Enter 发送，Shift + Enter 换行；
+“新建对话”会清空当前会话上下文。生成失败或主动停止的轮次不会加入后续上下文。
+
+API Key 和模型配置仅由后端读取；网页显示当前模型和配置状态，不读取或返回密钥。
+`.env` 已加入 Git 忽略规则，提交仓库只包含空密钥模板 `.env.example`。
+环境变量优先于 `.env`；若之前在终端导出了同名变量，请先取消该变量再使用文件中的值。
+修改 `.env` 后，在启动终端按 Ctrl+C 停止服务，再运行启动命令。
+未填写密钥也可以打开页面，页面会提示配置，不能发送问题。
+
+指定其他配置文件：
+
+```sh
+uv run --extra web simagent --env-file /你的路径/.env
+```
+
+也支持 `uv run --extra web python -m simagent`。通过 pip 安装时使用
+`pip install -e '.[web]'`，然后执行 `simagent` 或 `python -m simagent`。
+网页依赖在 `web` extra 中，核心框架仍可通过 `uv sync` 单独安装。
+
+此入口使用 Pydantic AI 文本 Agent，只进行模型问答，不调用 `sim` 算法、机器学习或仿真工具，
+也不启动 `SimulationFramework` 的规划执行闭环。聊天历史保存在服务进程内存中，同一浏览器的
+页面刷新可以继续对话；浏览器通过 HttpOnly Cookie 关联会话，不在本地存储聊天内容。
+不同浏览器会话相互独立，同一会话同时只能生成一个回答。服务重启后聊天历史清空。
+每次提问会将当前对话历史发送给配置的模型服务；每个会话最多 100 轮，达到上限后新建对话即可。
+
 ## 架构与职责
 
 ```mermaid
@@ -57,7 +104,8 @@ flowchart LR
 5. 创建 `SQLiteRunStore` 和 `SimulationExecutor`，与规划智能体共享同一个 registry 和 validator。
 6. 组装 `SimulationFramework`，调用异步 `run(request)`；已有方案可通过 `plan` 参数直接传入。
 
-没有预装业务工具、默认模型、默认密钥或业务规则。注册真实工具并配置模型后才能生成和执行业务方案。
+执行框架没有预装业务工具、默认模型、默认密钥或业务规则。注册真实工具并配置模型后才能生成和执行业务方案。
+网页问答入口从 `.env` 读取 DeepSeek 配置，用于直接提问。
 模型供应商 SDK 由对应 extra 安装。`openai_compatible_model` 用于本地或远程兼容端点，
 显式接收模型名、`base_url`、可选密钥与 HTTP 客户端；其他供应商可直接传入 Pydantic AI `Model`。
 
@@ -184,5 +232,10 @@ job_id、幂等键、截止时间、结果引用、指标、解释和修订链�
 | `src/simagent/evaluation.py` | 程序指标与验收 |
 | `src/simagent/dependencies.py` | 数据、知识和客户端注入接口 |
 | `src/simagent/models.py` | 可选兼容模型端点适配 |
+| `src/simagent/cli.py` / `__main__.py` | 网页服务启动入口 |
+| `src/simagent/config.py` | 后端 `.env` 配置加载 |
+| `src/simagent/web.py` | 网页问答、流式输出与会话管理 |
+| `src/simagent/static/` | 网页 HTML、CSS 和 JavaScript |
 
-日志使用标准库 `logging`，应用自行配置处理器。框架不绑定 Web 服务、CLI、消息队列或特定仿真引擎。
+日志使用标准库 `logging`，应用自行配置处理器。框架不绑定消息队列或特定仿真引擎；
+可选网页问答入口独立于仿真执行流程。
