@@ -20,7 +20,7 @@ def write_tool_catalog(
     for tool in registered:
         description = ((tool.description or "").strip() or "未提供说明").splitlines()[0]
         lines.extend([
-            f"工具：`{tool.name}`  ",
+            f"工具：`{tool.name}`\\",
             f"作用：{description}",
             "",
         ])

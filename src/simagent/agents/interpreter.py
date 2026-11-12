@@ -38,6 +38,7 @@ class ResultInterpreter:
         *,
         limits: AgentLimits | None = None,
         model_settings: ModelSettings | None = None,
+        instructions: str = "",
     ) -> None:
         self.limits = limits or AgentLimits()
         self.agent = Agent(
@@ -45,7 +46,7 @@ class ResultInterpreter:
             output_type=Interpretation,
             deps_type=InterpretationDeps,
             name="result_interpreter",
-            instructions=INTERPRETATION_INSTRUCTIONS,
+            instructions=INTERPRETATION_INSTRUCTIONS + "\n" + instructions,
             retries=self.limits.output_retries,
             model_settings=model_settings,
             tool_timeout=self.limits.tool_timeout_seconds,
@@ -110,6 +111,7 @@ class ResultInterpreter:
                         "diagnostics": [item.model_dump(mode="json") for item in value.diagnostics],
                         "artifacts": [item.model_dump(mode="json") for item in value.artifacts],
                         "versions": value.versions,
+                        "preview": value.payload if len(json.dumps(value.payload, ensure_ascii=False)) <= 8000 else None,
                     }
                     for key, value in results.items()
                 },

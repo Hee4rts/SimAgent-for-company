@@ -15,53 +15,89 @@
       <img src="/static/favicon.svg" width="32" height="32" alt="">
       <span>simAgent<span class="brand-dot">.</span></span>
     </a>
-    <div class="workspace-label">你的思考空间</div>
-    <button id="new-task" class="new-task" disabled>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      新建任务
-      <span class="key-hint">＋</span>
-    </button>
-    <div class="sidebar-section">工作空间</div>
-    <div class="nav-current">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l-3 3V11.5A7.5 7.5 0 0 1 9.5 4h3a7.5 7.5 0 0 1 7.5 7.5Z"/></svg>
-      当前任务
-      <span class="nav-dot"></span>
+    <div class="workspace-label">企业仿真工作台</div>
+    <div id="new-task-control" class="new-task-control">
+      <button id="new-task" class="new-task" type="button" aria-expanded="false" aria-controls="new-task-menu" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        新建任务
+        <span class="menu-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div id="new-task-menu" class="new-task-menu" hidden>
+        <button type="button" data-create="general">新建通用任务</button>
+        <button type="button" data-create="approval">新建审批电子流</button>
+      </div>
     </div>
+    <div class="sidebar-section">历史任务</div>
+    <nav id="task-list" class="task-list" aria-label="历史任务"></nav>
+    <button id="recently-deleted" class="recently-deleted" type="button" disabled>最近删除</button>
   </aside>
 
   <main class="main">
     <header class="topbar">
-      <div class="breadcrumb"><span>工作空间</span><span class="slash">/</span><strong>任务</strong></div>
-      <div class="mode-tag"><span></span>任务讨论</div>
+      <strong id="task-title">通用任务</strong>
+      <span id="task-type">通用任务</span>
     </header>
-
     <div id="notice" class="notice" role="status" hidden></div>
-    <section id="scroll-area" class="scroll-area" aria-label="任务内容">
+    <section id="scroll-area" class="scroll-area" aria-label="对话内容">
       <div id="welcome" class="welcome">
-        <div class="welcome-mark"><img src="/static/favicon.svg" width="48" height="48" alt=""></div>
-        <div class="eyebrow">让思考，向前一步</div>
-        <h1>今天，想解决什么任务？</h1>
-        <p>从一个问题开始，梳理思路、理解概念，<br>或一起探讨下一步的可能。</p>
-        <div class="welcome-rule"></div>
-        <div class="welcome-caption">你的问题，就是起点。</div>
+        <h1 id="welcome-title">有什么想讨论的？</h1>
+        <p id="welcome-description">直接输入你的问题。</p>
       </div>
       <div id="messages" class="messages"></div>
     </section>
-
     <div class="composer-area">
       <form id="task-form" class="composer">
-        <label for="question" class="sr-only">输入任务</label>
-        <textarea id="question" placeholder="描述你的任务…" rows="2" maxlength="32000" disabled></textarea>
+        <label for="question" class="sr-only">输入问题</label>
+        <textarea id="question" placeholder="输入你的问题…" rows="2" maxlength="32000" disabled></textarea>
         <div class="composer-bottom">
-          <span class="composer-hint">Enter 发送 <span>·</span> Shift + Enter 换行</span>
-          <button id="stop" class="stop-button" type="button" hidden><span></span>停止生成</button>
-          <button id="send" class="send-button" type="submit" aria-label="发送任务内容" disabled>
+          <span class="composer-hint">Enter 发送 · Shift + Enter 换行</span>
+          <button id="stop" class="stop-button" type="button" hidden>停止</button>
+          <button id="send" class="send-button" type="submit" aria-label="发送" disabled>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 6-6 6 6M12 6v13"/></svg>
           </button>
         </div>
       </form>
-      <div class="footer-note">simAgent</div>
     </div>
   </main>
+
+  <div id="task-actions" class="task-action-menu" role="group" aria-label="任务操作" hidden>
+    <button id="rename-task" type="button">重命名</button>
+    <button id="delete-task" class="danger-text" type="button">删除</button>
+    <p id="delete-task-hint" hidden>正在处理，请先停止任务再删除。</p>
+  </div>
+
+  <dialog id="rename-dialog" class="task-dialog" aria-labelledby="rename-heading">
+    <form id="rename-form">
+      <h2 id="rename-heading">重命名任务</h2>
+      <label for="task-name-input">任务名称</label>
+      <input id="task-name-input" type="text" maxlength="80" required autocomplete="off" autofocus>
+      <p id="rename-error" class="dialog-error" role="alert" hidden></p>
+      <div class="dialog-buttons">
+        <button type="button" data-close="rename-dialog">取消</button>
+        <button id="rename-save" class="primary-button" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="deleted-dialog" class="task-dialog" aria-labelledby="deleted-heading">
+    <h2 id="deleted-heading">最近删除</h2>
+    <p class="dialog-description">恢复后可继续查看原有对话；彻底删除后无法恢复。</p>
+    <div id="deleted-task-list" class="deleted-task-list"></div>
+    <p id="deleted-error" class="dialog-error" role="alert" hidden></p>
+    <div class="dialog-buttons">
+      <button type="button" data-close="deleted-dialog" autofocus>关闭</button>
+    </div>
+  </dialog>
+
+  <dialog id="purge-dialog" class="task-dialog" aria-labelledby="purge-heading" aria-describedby="purge-description">
+    <h2 id="purge-heading">彻底删除任务？</h2>
+    <p id="purge-task-title" class="purge-task-title"></p>
+    <p id="purge-description" class="dialog-description">此任务的对话、仿真数据和运行记录将永久删除，无法恢复。</p>
+    <p id="purge-error" class="dialog-error" role="alert" hidden></p>
+    <div class="dialog-buttons">
+      <button type="button" data-close="purge-dialog" autofocus>取消</button>
+      <button id="purge-confirm" class="danger-button" type="button">彻底删除</button>
+    </div>
+  </dialog>
 </body>
 </html>

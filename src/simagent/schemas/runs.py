@@ -9,7 +9,7 @@ from pydantic import Field, JsonValue
 
 from .base import Contract, new_id, now
 from .business import BusinessInput
-from .plan import SimulationPlan
+from .plan import PlanningReply, SimulationPlan
 from .results import Evaluation, Interpretation
 
 class JobState(StrEnum):
@@ -86,9 +86,11 @@ class WorkflowResult(Contract):
     runs: list[RunRecord]
     evaluation: Evaluation
     interpretation: Interpretation | None = None
+    reply: PlanningReply | None = None
 
     @property
     def succeeded(self) -> bool:
         return (
             bool(self.runs) and self.runs[-1].state == RunState.SUCCEEDED and self.evaluation.passed
+            and self.reply is None
         )

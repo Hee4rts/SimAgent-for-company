@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from ..agents import PlanSolveAgent, ResultInterpreter
 from ..schemas import (
     BusinessInput,
+    Evaluation,
     ExecutionFeedback,
     RunEvent,
     RunRecord,
     RunState,
     SimulationPlan,
+    PlanningReply,
     TaskState,
     WorkflowResult,
 )
@@ -26,6 +30,7 @@ class SimulationFramework:
         *,
         evaluator: MetricEvaluator | None = None,
         max_revisions: int = 2,
+        observer: Callable[[str, dict], None] | None = None,
     ) -> None:
         if not 0 <= max_revisions <= 10:
             raise ValueError("max_revisions must be between 0 and 10")
@@ -34,6 +39,11 @@ class SimulationFramework:
         self.planner, self.executor, self.interpreter = planner, executor, interpreter
         self.evaluator = evaluator or MetricEvaluator()
         self.max_revisions = max_revisions
+        self.observer = observer
+
+    def _emit(self, stage: str, **details) -> None:
+        if self.observer is not None:
+            self.observer(stage, details)
 
     async def run(
         self,
@@ -41,8 +51,15 @@ class SimulationFramework:
         *,
         plan: SimulationPlan | None = None,
     ) -> WorkflowResult:
-        plan = plan or await self.planner.plan(request)
+        if plan is None:
+            self._emit("planning")
+            plan = await self.planner.prepare(request)
+        if isinstance(plan, PlanningReply):
+            self._emit("needs_input" if plan.reason == "missing_input" else "discussed", reply=plan.model_dump(mode="json"))
+            return WorkflowResult(runs=[], evaluation=Evaluation(), reply=plan)
+        self._emit("validating", plan=plan.model_dump(mode="json"))
         run = self.executor.create_run(request, plan)
+        self._emit("executing", run_id=run.id)
         with self.executor.store.exclusive(f"workflow:{run.id}"):
             return await self._complete([await self.executor.execute(run.id)])
 
@@ -67,6 +84,7 @@ class SimulationFramework:
                 if child.parent_run_id != runs[-1].id:
                     raise ValueError("Run lineage contains an invalid parent link")
                 runs.append(child)
+            self._emit("executing", run_id=runs[-1].id)
             runs[-1] = await self.executor.resume(runs[-1].id)
             return await self._complete(runs)
 
@@ -74,6 +92,7 @@ class SimulationFramework:
         while True:
             run = runs[-1]
             results = self.executor.results(run)
+            self._emit("evaluating", run_id=run.id)
             evaluation = self.evaluator.evaluate(run.plan, run.request, results)
             run.evaluation = evaluation
             self.executor.store.save(
@@ -115,11 +134,18 @@ class SimulationFramework:
                     details={"feedback": feedback.model_dump(mode="json")},
                 ),
             )
-            plan = await self.planner.plan(run.request, previous_plan=run.plan, feedback=feedback)
+            self._emit("replanning", run_id=run.id, issues=issues)
+            plan = await self.planner.prepare(run.request, previous_plan=run.plan, feedback=feedback)
+            if isinstance(plan, PlanningReply):
+                self._emit("needs_input" if plan.reason == "missing_input" else "discussed", reply=plan.model_dump(mode="json"))
+                return WorkflowResult(runs=runs, evaluation=evaluation, reply=plan)
+            self._emit("validating", plan=plan.model_dump(mode="json"))
             revised = self.executor.create_run(run.request, plan, parent_run_id=run.id)
             run.next_run_id = revised.id
+            self._emit("executing", run_id=revised.id)
             runs.append(await self.executor.execute(revised.id))
         if self.interpreter is not None and run.interpretation is None:
+            self._emit("interpreting", run_id=run.id)
             try:
                 run.interpretation = await self.interpreter.interpret(run, results, evaluation)
             except Exception as error:
@@ -134,4 +160,5 @@ class SimulationFramework:
                 )
                 raise
             self.executor.store.save(run, RunEvent(kind="run.interpreted"))
+        self._emit("completed", run_id=run.id, succeeded=run.state == RunState.SUCCEEDED and evaluation.passed)
         return WorkflowResult(runs=runs, evaluation=evaluation, interpretation=run.interpretation)

@@ -71,6 +71,14 @@ class RunConfig(Contract):
     fail_fast: bool = True
 
 
+class PlanningReply(Contract):
+    """A planner's response when there is no executable task yet."""
+
+    message: str = Field(min_length=1)
+    questions: list[str] = Field(default_factory=list)
+    reason: Literal["missing_input", "unsupported", "discussion"]
+
+
 class SimulationPlan(Contract):
     title: str = Field(min_length=1)
     goals: list[str] = Field(min_length=1)

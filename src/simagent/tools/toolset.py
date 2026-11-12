@@ -10,8 +10,13 @@ from pydantic_ai import FunctionToolset, Tool
 
 from ..infrastructure.dependencies import Services
 from .serpapi_search import web_search
+from .leave_approval.api import APPROVAL_TOOLS
 
 toolset = FunctionToolset[Services]()
 toolset.add_tool(Tool(web_search, name="web_search", timeout=30))
 
-# 在此添加业务函数的导入和官方工具注册。
+for function in APPROVAL_TOOLS:
+    toolset.add_tool(Tool(
+        function,
+        metadata={"simagent": {"version": "1", "tags": ["leave_approval"], "idempotent": True}},
+    ))

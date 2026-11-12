@@ -16,6 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+approval = ["scipy>=1.15,<2"]
 deepseek = ["pydantic-ai-slim[openai]==2.66.0"]
 web = [
   "pydantic-ai-slim[openai]==2.66.0",

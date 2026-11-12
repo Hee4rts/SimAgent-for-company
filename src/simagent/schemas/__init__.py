@@ -17,6 +17,7 @@ from .business import (
 from .plan import (
     AcceptanceCriterion,
     MetricDefinition,
+    PlanningReply,
     RetryPolicy,
     RunConfig,
     SimulationPlan,
@@ -66,6 +67,7 @@ __all__ = [
     "MetricDefinition",
     "MetricValue",
     "Positive",
+    "PlanningReply",
     "RetryPolicy",
     "RunConfig",
     "RunEvent",
