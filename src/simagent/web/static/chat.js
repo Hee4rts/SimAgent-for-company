@@ -280,8 +280,8 @@ function showSession(data) {
   currentTaskId = data.task_id;
   const approval = data.mode === "approval";
   $("task-type").textContent = approval ? "审批电子流" : "通用任务";
-  $("welcome-title").textContent = approval ? "描述你的审批场景" : "有什么想讨论的？";
-  $("welcome-description").textContent = approval ? "输入申请条件和想比较的方案，缺少的信息可以继续补充。" : "直接输入你的问题。";
+  $("welcome-title").textContent = approval ? "审批电子流" : "有什么想讨论的？";
+  $("welcome-description").textContent = approval ? "输入问题和想比较的方案，缺少的信息可以继续补充。" : "直接输入你的问题。";
   input.placeholder = approval ? "输入审批场景或继续补充条件…" : "输入你的问题…";
   const url = new URL(window.location.href);
   url.searchParams.set("task", currentTaskId);
