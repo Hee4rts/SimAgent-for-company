@@ -15,7 +15,10 @@ src/simagent/
 ├── agents/               # 规划与结果解释
 ├── engine/               # 工作流、校验、调度、评估
 ├── tools/
-│   └── toolset.py        # 工具注册入口：官方 FunctionToolset
+│   ├── toolset.py        # 工具注册入口：官方 FunctionToolset
+│   ├── serpapi_search.py # SerpApi 联网搜索
+│   ├── catalog.py        # 自动生成工具清单
+│   └── registered_tools.md # 已注册工具记录
 ├── schemas/              # 业务输入、计划、结果、运行记录
 ├── web/                  # 网页服务与 static 前端资源
 └── infrastructure/       # 配置、模型连接、存储、依赖
@@ -34,6 +37,8 @@ DEEPSEEK_API_KEY=填入你的密钥
 DEEPSEEK_MODEL=deepseek-chat
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 
+SERPAPI_API_KEY=填入你的SerpApi密钥
+
 SIMAGENT_HOST=127.0.0.1
 SIMAGENT_PORT=8000
 SIMAGENT_TIMEOUT_SECONDS=180
@@ -48,8 +53,26 @@ uv run --extra web simagent
 浏览器打开 **http://127.0.0.1:8000**，即可创建任务并持续补充信息。
 支持流式回答、复制回答、停止生成和新建任务。Enter 发送，Shift + Enter 换行；
 “新建任务”会清空当前内容与上下文，当前不保存历史任务列表。生成失败或主动停止的轮次不会加入后续上下文。
-网页直接使用 Pydantic AI 官方工具接口。默认工具集为空，添加工具后重启即可调用。
+网页直接使用 Pydantic AI 官方工具接口，默认已注册 SerpApi 搜索工具 `web_search`。
+填写 `SERPAPI_API_KEY` 并重启后即可搜索；不配置该密钥仍可以使用普通问答。
 网页采用 Agent 原生调用；需要依赖调度、任务记录和指标评估时，使用 `SimulationFramework`。
+
+## SerpApi 搜索
+
+工具实现位于 [tools/serpapi_search.py](src/simagent/tools/serpapi_search.py)，
+在 `tools/toolset.py` 中通过官方 `Tool(web_search, ...)` 注册，无需额外安装 SerpApi SDK。
+`query` 是搜索关键词；`max_results` 默认 5，范围 1 到 10。
+返回 Google 自然搜索结果的 `title`、`url` 和 `snippet`，不读取网页全文；
+结果来自单次搜索响应，实际数量可能少于请求数量。
+
+在项目根目录 `.env` 添加 `SERPAPI_API_KEY` 后重启网页服务。
+访问 **http://127.0.0.1:8000/api/tools** 可以查看 `web_search`，
+在网页要求搜索公开信息时，Agent 可按需调用。实际搜索会使用 SerpApi 账户额度。
+缺少密钥、超时、鉴权失败或额度不足会以工具失败信息反馈，不会伪装成搜索结果。
+
+网页会从配置自动注入密钥。自行使用 Agent 或计划执行器时，通过
+`Services(clients={"serpapi_api_key": settings.serpapi_api_key})` 传入依赖，
+并使用同一个官方工具集。也可以直接注入 `SecretStr` 或字符串密钥；不要硬编码密钥。
 
 ## 注册工具
 
@@ -73,11 +96,24 @@ toolset = FunctionToolset[Services]()
 
 函数的类型注解生成参数 schema，docstring 提供工具说明；不需要额外定义工具类别。
 机器学习、机理模型、运筹求解和搜索都可以封装为这样的函数。
-工具返回 Pydantic 对象或可序列化的字典、列表、标量即可；框架不内置业务工具或案例。
+工具返回 Pydantic 对象或可序列化的字典、列表、标量即可；当前默认提供 SerpApi 搜索，未内置业务模型案例。
 
 业务工具可以放在 `tools/` 的独立模块中。在模块内使用 `from .toolset import toolset`，
 并在 `tools/toolset.py` **创建 toolset 之后**导入该模块，使其在启动时完成注册。
 也可以直接导入已有函数后调用 `add_function`。同一个工具只注册一次。
+
+已注册工具会自动汇总到 [tools/registered_tools.md](src/simagent/tools/registered_tools.md)，
+每个工具仅两行：工具名称、作用说明。
+每次启动网页时更新默认工具集清单；新增工具后重启即可，无需手动修改记录。
+清单反映当前注册状态，删除工具后也会同步移除对应条目。
+无需启动网页时，可单独生成：
+
+```sh
+uv run python -m simagent.tools.catalog
+```
+
+生成过程只读取工具定义，不调用工具、不读取 `.env` 或检查密钥。
+通过 `create_app(tools=..., toolsets=...)` 注入的临时工具仍在网页 `/api/tools` 查看。
 
 ## Agent 与网页接入
 

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import secrets
 import time
 from collections.abc import AsyncIterable, Callable, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -24,8 +25,10 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 
 from ..infrastructure.config import WebSettings
 from ..infrastructure.dependencies import Services
+from ..tools.catalog import write_tool_catalog
 from ..tools.toolset import toolset as default_toolset
 
+logger = logging.getLogger(__name__)
 ASSETS = Path(__file__).parent / "static"
 COOKIE = "simagent_session"
 INSTRUCTIONS = """
@@ -82,6 +85,10 @@ def create_app(
 ) -> FastAPI:
     settings = settings or WebSettings.from_env()
     services = services if services is not None else Services()
+    services = replace(services, clients={
+        "serpapi_api_key": settings.serpapi_api_key,
+        **services.clients,
+    })
     selected_toolsets = list(toolsets) if toolsets is not None else [default_toolset]
     if tools:
         selected_toolsets.insert(0, FunctionToolset(tools))
@@ -90,6 +97,12 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        try:
+            await asyncio.to_thread(write_tool_catalog, default_toolset)
+        except OSError:
+            # Installed packages may be read-only; documentation must not block startup.
+            logger.warning("无法写入 tools/registered_tools.md，请确认工具目录可写。")
+
         from openai import AsyncOpenAI
         from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.providers.deepseek import DeepSeekProvider

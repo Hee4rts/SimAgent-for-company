@@ -12,6 +12,7 @@ class WebSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     api_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    serpapi_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
     model: str = Field(default="deepseek-chat", min_length=1)
     base_url: AnyHttpUrl = "https://api.deepseek.com"
     host: str = Field(default="127.0.0.1", min_length=1)
@@ -35,6 +36,7 @@ class WebSettings(BaseModel):
         values = {**dotenv_values(path, interpolate=False), **os.environ}
         mapping = {
             "api_key": "DEEPSEEK_API_KEY",
+            "serpapi_api_key": "SERPAPI_API_KEY",
             "model": "DEEPSEEK_MODEL",
             "base_url": "DEEPSEEK_BASE_URL",
             "host": "SIMAGENT_HOST",
