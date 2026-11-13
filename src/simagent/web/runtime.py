@@ -15,7 +15,7 @@ from ..agents import AgentLimits, PlanSolveAgent, ResultInterpreter
 from ..engine.executor import SimulationExecutor
 from ..engine.validation import PlanValidator
 from ..engine.workflow import SimulationFramework
-from ..schemas import BusinessInput, RunEvent
+from ..schemas import BusinessInput
 from ..tools.leave_approval.task import APPROVAL_INSTRUCTIONS, APPROVAL_INTERPRETATION, TOOL_LABELS
 
 STAGES = {
@@ -105,17 +105,17 @@ def run_view(run, store):
 
 
 class ObservedRunStore:
-    """Forward durable writes to the existing store before notifying the UI."""
+    """Forward durable writes and associate runs with the current conversation."""
     def __init__(self, store, on_record):
         self.store, self.on_record = store, on_record
 
     def create(self, run):
         self.store.create(run)
-        self.on_record(run, RunEvent(kind="run.created"))
+        self.on_record(run)
 
     def save(self, run, event=None):
         self.store.save(run, event)
-        self.on_record(run, event)
+        self.on_record(run)
 
     def load(self, run_id):
         return self.store.load(run_id)
@@ -135,7 +135,7 @@ class ObservedRunStore:
 
 class FrameworkRuntime:
     def __init__(self, *, model, tools, services, storage, thread, mode, timeout):
-        self.thread, self.storage = thread, storage
+        self.thread = thread
         self.emit = lambda event: None
         self.current_run_id = None
         self.stop_requested = False
@@ -156,12 +156,11 @@ class FrameworkRuntime:
             raise asyncio.CancelledError
         self.emit({"type": "stage", "stage": stage, "label": STAGES[stage], **details})
 
-    def on_record(self, run, event):
+    def on_record(self, run):
         self.current_run_id = run.id
         if run.id not in self.thread.run_ids:
             self.thread.run_ids.append(run.id)
-        self.emit({"type": "run", "run": {"id": run.id, "state": run.state.value},
-                   "event": event.kind if event else None})
+        self.emit({"type": "run", "run_id": run.id})
 
     async def run(self, message):
         self.current_run_id = None

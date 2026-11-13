@@ -129,9 +129,6 @@ def create_app(
                 await asyncio.gather(*pending, return_exceptions=True)
 
     app = FastAPI(title="simAgent", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-    app.state.storage = storage
-    app.state.toolset = combined
-    app.state.approval_toolset = approval_tools
 
     @app.middleware("http")
     async def local_browser_policy(request, call_next):
@@ -313,14 +310,6 @@ def create_app(
         storage.purge_thread(session, thread)
         return task_history(session)
 
-    @app.post("/api/session/reset")
-    async def reset_session(request: Request):
-        session = get_session(request)
-        thread = session.create_thread(session.thread.mode)
-        storage.attach(thread.workspace)
-        storage.save_session(session)
-        return session_view(session)
-
     def owned_run(session, run_id):
         if not any(run_id in thread.run_ids for thread in session.threads.values() if thread.deleted_at is None):
             raise HTTPException(404, "当前任务中没有该运行记录。")
@@ -352,14 +341,17 @@ def create_app(
         storage.save_session(session)
 
         def emit(event):
-            if event["type"] == "stage":
-                answer["stage"] = {key: value for key, value in event.items() if key != "type"}
-            elif event["type"] == "run":
-                run_id = event["run"]["id"]
+            if event["type"] == "run":
+                # Run changes are persisted by the run store. Save the session
+                # only when linking a run to this turn; the browser needs no run events.
+                run_id = event["run_id"]
                 if run_id not in answer["run_ids"]:
                     answer["run_ids"].append(run_id)
-            storage.save_session(session)
-            queue.put_nowait(event)
+                    storage.save_session(session)
+            elif event["type"] == "stage":
+                answer["stage"] = {key: value for key, value in event.items() if key != "type"}
+                storage.save_session(session)
+                queue.put_nowait({"type": "stage", "stage": event["stage"]})
 
         runtime.emit = emit
 
@@ -403,7 +395,6 @@ def create_app(
         thread.task = asyncio.create_task(produce())
 
         async def stream():
-            yield json.dumps({"type": "start"}) + "\n"
             while True:
                 item = await queue.get()
                 yield json.dumps(item, ensure_ascii=False) + "\n"
